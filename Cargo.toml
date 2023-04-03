@@ -2,6 +2,7 @@
 name = "fastcwt"
 version = "0.1.0"
 authors = ["Minjae Kim <minjaekim@mkaudio.company>"]
+description = "Rust-lang Continuous Wavelet Transform(CWT) library inspired by fCWT."
 license = "MIT OR Apache-2.0"
 homepage = "https://github.com/minjaekimartist/fastcwt"
 repository = "https://github.com/minjaekimartist/fastcwt"
