@@ -1,4 +1,8 @@
 # fastcwt
+[![](https://img.shields.io/crates/v/fastcwt.svg)](https://crates.io/crates/fastcwt)
+[![](https://img.shields.io/crates/l/fastcwt.svg)](https://crates.io/crates/fastcwt)
+[![](https://docs.rs/fastcwt/badge.svg)](https://docs.rs/fastcwt/)
+
 Rust-lang Continuous Wavelet Transform(CWT) library inspired by fCWT.
 
 This crate is a direct translation of fCWT Library written in C++ by Arts, L.P.A. and van den Broek, E.L. (https://github.com/fastlib/fCWT)
