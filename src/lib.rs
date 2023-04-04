@@ -10,6 +10,7 @@
 //! Arts, L.P.A., van den Broek, E.L. The fast continuous wavelet transformation (fCWT) for real-time, high-quality, noise-resistant time–frequency analysis. Nat Comput Sci 2, 47–58 (2022). <https://doi.org/10.1038/s43588-021-00183-z>
 
 #![feature(core_intrinsics)]
+#![forbid(unsafe_code)]
 
 use rustfft;
 
@@ -118,7 +119,7 @@ impl Scales
         let s1 = fs as f64 / nf0;
 
         //Cannot pass the nyquist frequency
-        assert!((f1 as usize <= fs / 2));
+        assert!(f1 as usize <= fs / 2, "Max frequency cannot be higher than the Nyquist frequency.");
 
         let power0 = s0.log(std::f64::consts::E) / base.log(std::f64::consts::E);
         let power1 = s1.log(std::f64::consts::E) / base.log(std::f64::consts::E);
@@ -135,7 +136,7 @@ impl Scales
         //If a signal has fs=100hz and you want to measure [0.1-50]Hz, you need scales 2 to 1000;
 
         //Cannot pass the nyquist frequency
-        assert!(f1 <= (fs / 2) as f64);
+        assert!(f1 <= (fs / 2) as f64, "Max frequency cannot be higher than the Nyquist frequency.");
         let df = f1 - f0;
 
         for i in 0 .. f_num { self.scales[f_num - i - 1] = fs as f64 / f0 + (df / f_num as f64) * i as f64; }
@@ -147,7 +148,7 @@ impl Scales
         let s1 = fs as f64 / f0;
 
         //Cannot pass the nyquist frequency
-        assert!(f1 <= fs as f64 / 2.0);
+        assert!(f1 <= fs as f64 / 2.0, "Max frequency cannot be higher than the Nyquist frequency.");
         let ds = s1 - s0;
 
         for i in 0 .. f_num { self.scales[i] = s0 + (ds / f_num as f64) * i as f64; }
