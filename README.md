@@ -11,7 +11,24 @@ I changed certain functions that I cannot translate, it seems like it could be e
 
 # Usage
 
+``` Rust
 
+use fastcwt::*;
+use rand::prelude::*;
+
+let wavelet = Wavelet::create(1.0); //Create a Morlet wavelet.
+let scale = Scales::create(ScaleTypes::LinFreq, 48000, 20.0, 20000.0, 1000); //Create a scale factor.
+
+let mut transform = FastCWT::create(wavelet, true); // Create a fCWT instance.
+
+let mut input = vec![];
+for _ in 0 .. 48000
+{
+    input.push(thread_rng().gen_range(-1.0 .. 1.0))
+};
+
+let result = transform.cwt(1000, input.as_slice(), scale); //Store the result.
+```
 
 # Changelog
 0.1.5 - Parallelized FFT using rayon crate.
