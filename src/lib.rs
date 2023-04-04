@@ -5,7 +5,32 @@
 //! or the difference between fftw Library and rustfft crate.
 //! (fCWT used fftw, and fastcwt used rustfft.)
 //!
-//! Citation
+//! ### Usage
+//! '''
+//! use fastcwt;
+//!
+//! let wavelet = Wavelet::create(1.0);
+//! let scale = Scales::create(ScaleTypes::LinFreq, 48000, 20.0, 20000.0, 1000);
+//! let mut input = vec![];
+//! for _ in 0 .. 48000 { input.push(thread_rng().gen_range(-1.0 .. 1.0)) };
+//!
+//! let result = FastCWT::create(wavelet, true).cwt(1000, input.as_slice(), scale);
+//!
+//! '''
+//!
+//! Changelog
+//!
+//! 0.1.5 - Parallelized FFT using rayon crate.
+//!
+//! 0.1.4 - Added error messages in assert!() and #![forbid(unsafe_code)] macro.
+//!
+//! 0.1.3 - Get rid of unsafe codes and fn find2power().
+//!
+//! 0.1.1, 0.1.2 - Minor fixes.
+//!
+//! 0.1.0 - Initial release.
+//!
+//! ### Citation
 //!
 //! Arts, L.P.A., van den Broek, E.L. The fast continuous wavelet transformation (fCWT) for real-time, high-quality, noise-resistant time–frequency analysis. Nat Comput Sci 2, 47–58 (2022). <https://doi.org/10.1038/s43588-021-00183-z>
 
@@ -13,6 +38,7 @@
 #![forbid(unsafe_code)]
 
 use rustfft;
+use rayon::prelude::*;
 
 /// Scale types selection for Scale object.
 #[derive(PartialEq)]
@@ -190,15 +216,25 @@ impl FastCWT
         self.wavelet.generate(newsize);
         for i in 1 .. newsize >> 1 { buffer[newsize - i] = buffer[i]; }
 
-        for i in 0 .. scales.num_scales
-        {
-            //FFT-base convolution in the frequency domain
-            self.daughter_wavelet_multiplication(& mut buffer, self.wavelet.mother.as_slice(), scales.scales[i],num, self.wavelet.imag_freq, self.wavelet.double_sided);
+        let buffer = std::sync::Arc::new(std::sync::Mutex::new(Some(buffer)));
+        let buffer_clone = buffer.clone();
 
-            planner.plan_fft_forward(buffer.len()).process(& mut buffer);
-            if self.use_normalization { for n in 0 .. newsize { buffer[n] = buffer[n] / newsize as f64; } }
-        };
-        return buffer;
+        (0 .. scales.num_scales).into_par_iter().for_each(|i|
+        {
+            if let Ok(mut guard) = buffer_clone.try_lock()
+            {
+                if let Some(buffer_clone) = guard.as_mut()
+                {
+                    let mut planner = rustfft::FftPlanner::new();
+                    //FFT-base convolution in the frequency domain
+                    self.daughter_wavelet_multiplication(buffer_clone, self.wavelet.mother.as_slice(), scales.scales[i],num, self.wavelet.imag_freq, self.wavelet.double_sided);
+
+                    planner.plan_fft_forward(buffer_clone.len()).process(buffer_clone);
+                    if self.use_normalization { for n in 0 .. newsize { buffer_clone[n] = buffer_clone[n] / newsize as f64; } }
+                }
+            }
+        });
+        return buffer.lock().unwrap().take().unwrap();
     }
     fn daughter_wavelet_multiplication(& self, buffer : & mut [rustfft::num_complex::Complex<f64>], mother : &[f64], scale : f64, i_size : usize, imaginary : bool, doublesided : bool)
     {
@@ -218,5 +254,23 @@ impl FastCWT
                 buffer[s1 - n].im = buffer[s1 - n].im * mother[tmp as usize];
             } else { buffer[n].re = buffer[n].re * mother[tmp as usize]; buffer[n].im = buffer[n].im * mother[tmp as usize]; }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests
+{
+    use crate::*;
+    use rand::prelude::*;
+
+    #[test]
+    fn main()
+    {
+        let wavelet = Wavelet::create(1.0);
+        let scale = Scales::create(ScaleTypes::LinFreq, 48000, 20.0, 20000.0, 1000);
+        let mut input = vec![];
+        for _ in 0 .. 48000 { input.push(thread_rng().gen_range(-1.0 .. 1.0)) };
+
+        let result = FastCWT::create(wavelet, true).cwt(1000, input.as_slice(), scale);
     }
 }
