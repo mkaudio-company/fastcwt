@@ -55,14 +55,14 @@ impl Wavelet
         self.width = size;
 
         let toradians = 2.0 * std::f64::consts::PI / size as f64;
-        let norm = unsafe { std::intrinsics::sqrtf64(2.0 * std::f64::consts::PI) * std::intrinsics::powf64(1.0 / std::f64::consts::PI, 0.25) };
+        let norm = (2.0 * std::f64::consts::PI).sqrt() * (1.0 / std::f64::consts::PI).powf(0.25);
 
         //calculate array
         for w in 0 .. self.width
         {
             let mut tmp1 = 2.0 * (w as f64 * toradians) * self.fb - 2.0 * std::f64::consts::PI * self.fb;
-            unsafe { tmp1 = - std::intrinsics::powf64(tmp1, 2.0) / 2.0; }
-            unsafe { self.mother.push(norm * std::intrinsics::expf64(tmp1)); }
+            tmp1 = - tmp1.powf(2.0) / 2.0;
+            self.mother.push(norm * (tmp1).exp());
         }
     }
 }
@@ -95,11 +95,12 @@ impl Scales
             fs : afs,
             num_scales: af_num,
         };
-
-        if st == ScaleTypes::Log { Scales::calculate_logscale_array(& mut scales, 2.0, afs, af0, af1, af_num); }
-        else if st == ScaleTypes::Linear { Scales::calculate_linscale_array(& mut scales, afs, af0, af1, af_num); }
-        else { Scales::calculate_linfreq_array(& mut scales, afs, af0, af1, af_num); }
-
+        match st
+        {
+            ScaleTypes::Linear => { scales.calculate_linscale_array(afs, af0, af1, af_num); }
+            ScaleTypes::Log => { scales.calculate_logscale_array(2.0, afs, af0, af1, af_num); }
+            ScaleTypes::LinFreq => { scales.calculate_linfreq_array(afs, af0, af1, af_num); }
+        }
         return scales;
     }
     pub fn get_scales(& self) -> Vec<f64> { return self.scales.clone(); }
@@ -119,14 +120,14 @@ impl Scales
         //Cannot pass the nyquist frequency
         assert!((f1 as usize <= fs / 2));
 
-        let power0 = unsafe { std::intrinsics::logf64(s0) / std::intrinsics::logf64(base) };
-        let power1 = unsafe { std::intrinsics::logf64(s1) / std::intrinsics::logf64(base) };
+        let power0 = s0.log(std::f64::consts::E) / base.log(std::f64::consts::E);
+        let power1 = s1.log(std::f64::consts::E) / base.log(std::f64::consts::E);
         let dpower = power1 - power0;
 
         for i in 0 .. f_num
         {
             let power = power0 + dpower / ((f_num - 1) * i) as f64;
-            unsafe { self.scales[i] = std::intrinsics::powf64(base, power); }
+            self.scales[i] = base.powf(power);
         }
     }
     fn calculate_linscale_array(& mut self, fs : usize, f0 : f64, f1 : f64, f_num : usize)
@@ -157,7 +158,6 @@ impl Scales
 pub struct FastCWT
 {
     wavelet : Wavelet,
-    threads : usize,
     use_normalization : bool
 }
 impl FastCWT
@@ -165,158 +165,57 @@ impl FastCWT
     /// # Arguments
     /// wavelet             - Wavelet object.
     ///
-    /// nthreads            - Number of threads to use.
-    ///
     /// optplan             - Use FFT optimization plans if true.
-    pub fn create(wavelet : Wavelet, n_threads : usize, optplan : bool) -> FastCWT { return FastCWT { wavelet, threads: n_threads, use_normalization : optplan, } }
+    pub fn create(wavelet : Wavelet, optplan : bool) -> FastCWT { return FastCWT { wavelet, use_normalization : optplan, } }
     /// # Arguments
     /// input     - Input data in vector format
     ///
     /// scales    - Scales object
-    pub fn cwt(& mut self, num : usize, input : & Vec<f64>, scales : Scales) -> Vec<rustfft::num_complex::Complex<f64>>
+    pub fn cwt(& mut self, num : usize, input : & [f64], scales : Scales) -> Vec<rustfft::num_complex::Complex<f64>>
     {
         //Find nearest power of 2
-        let newsize = 1 << find2power(num);
+        let newsize = num.next_power_of_two();
         let mut buffer = vec![];
 
         //Copy input to new input buffer
         for data in input { buffer.push(rustfft::num_complex::Complex::new(* data, 0.0)); }
 
-        if cfg!(target_feature = "avx")
+        let mut planner = rustfft::FftPlanner::new();
+
+        // //Perform forward FFT on input signal
+        planner.plan_fft_forward(buffer.len()).process(& mut buffer);
+
+        //Generate mother wavelet function
+        self.wavelet.generate(newsize);
+        for i in 1 .. newsize >> 1 { buffer[newsize - i] = buffer[i]; }
+
+        for i in 0 .. scales.num_scales
         {
-            let mut planner = rustfft::FftPlannerAvx::new().unwrap();
+            //FFT-base convolution in the frequency domain
+            self.daughter_wavelet_multiplication(& mut buffer, self.wavelet.mother.as_slice(), scales.scales[i],num, self.wavelet.imag_freq, self.wavelet.double_sided);
 
-            // //Perform forward FFT on input signal
             planner.plan_fft_forward(buffer.len()).process(& mut buffer);
-
-            //Generate mother wavelet function
-            self.wavelet.generate(newsize);
-            for i in 0 .. newsize >> 1 { buffer[newsize - i] = buffer[i]; }
-
-            for i in 0 .. scales.num_scales
-            {
-                //FFT-base convolution in the frequency domain
-                self.daughter_wavelet_multiplication(& mut buffer, self.wavelet.mother.clone(), scales.scales[i],num, self.wavelet.imag_freq, self.wavelet.double_sided);
-
-                planner.plan_fft_forward(buffer.len()).process(& mut buffer);
-                if self.use_normalization
-                {
-                    let batchsize = unsafe { std::intrinsics::ceilf64(newsize as f64 / self.threads as f64) as usize };
-
-                    for m in 0 .. self.threads
-                    {
-                        let start = batchsize * m;
-                        let end = std::cmp::min(newsize, batchsize * ( m + 1));
-
-                        for n in start .. end { buffer[n] = buffer[n] / newsize as f64; }
-                    }
-                }
-            };
-        }
-        else if cfg!(target_feature = "neon")
-        {
-            let mut planner = rustfft::FftPlannerNeon::new().unwrap();
-
-            // //Perform forward FFT on input signal
-            planner.plan_fft_forward(buffer.len()).process(& mut buffer);
-
-            //Generate mother wavelet function
-            self.wavelet.generate(newsize);
-            for i in 1 .. newsize >> 1 { buffer[newsize - i] = buffer[i]; }
-
-            for i in 0 .. scales.num_scales
-            {
-                //FFT-base convolution in the frequency domain
-                self.daughter_wavelet_multiplication(& mut buffer, self.wavelet.mother.clone(), scales.scales[i],num, self.wavelet.imag_freq, self.wavelet.double_sided);
-
-                planner.plan_fft_forward(buffer.len()).process(& mut buffer);
-                if self.use_normalization
-                {
-                    let batchsize = unsafe { std::intrinsics::ceilf64(newsize as f64 / self.threads as f64) as usize };
-
-                    for m in 0 .. self.threads
-                    {
-                        let start = batchsize * m;
-                        let end = std::cmp::min(newsize, batchsize * ( m + 1));
-
-                        for n in start .. end { buffer[n] = buffer[n] / newsize as f64; }
-                    }
-                }
-            };
-        }
-        else
-        {
-            let mut planner = rustfft::FftPlannerScalar::new();
-            // //Perform forward FFT on input signal
-            planner.plan_fft_forward(buffer.len()).process(& mut buffer);
-
-            //Generate mother wavelet function
-            self.wavelet.generate(newsize);
-            for i in 0 .. newsize >> 1 { buffer[newsize - i] = buffer[i]; }
-
-            for i in 0 .. scales.num_scales
-            {
-                //FFT-base convolution in the frequency domain
-                self.daughter_wavelet_multiplication(& mut buffer, self.wavelet.mother.clone(), scales.scales[i],num, self.wavelet.imag_freq, self.wavelet.double_sided);
-
-                planner.plan_fft_forward(buffer.len()).process(& mut buffer);
-                if self.use_normalization
-                {
-                    let batchsize = unsafe { std::intrinsics::ceilf64(newsize as f64 / self.threads as f64) as usize };
-
-                    for m in 0 .. self.threads
-                    {
-                        let start = batchsize * m;
-                        let end = std::cmp::min(newsize, batchsize * ( m + 1));
-
-                        for n in start .. end { buffer[n] = buffer[n] / newsize as f64; }
-                    }
-                }
-            };
-        }
+            if self.use_normalization { for n in 0 .. newsize { buffer[n] = buffer[n] / newsize as f64; } }
+        };
         return buffer;
     }
-    fn daughter_wavelet_multiplication(& self, buffer : & mut Vec<rustfft::num_complex::Complex<f64>>, mother : Vec<f64>, scale : f64, i_size : usize, imaginary : bool, doublesided : bool)
+    fn daughter_wavelet_multiplication(& self, buffer : & mut [rustfft::num_complex::Complex<f64>], mother : &[f64], scale : f64, i_size : usize, imaginary : bool, doublesided : bool)
     {
         let endpoint = std::cmp::min((i_size as f64 / 2.0) as usize, (i_size as f64 * 2.0 / scale) as usize);
         let step = scale / 2.0;
 
-        let athreads = std::cmp::min(self.threads, std::cmp::max(1, endpoint / 16));
-        let batchsize = endpoint / athreads;
         let maximum = i_size as f64 - 1.0;
         let s1 = i_size - 1;
 
-        for m in 0 .. athreads
+        for n in 0 .. endpoint
         {
-            let start = batchsize * m;
-            let end = batchsize * (m + 1);
+            let tmp = std::cmp::min(maximum as usize, step as usize * n);
 
-            for n in start .. end
+            if doublesided
             {
-                let tmp = std::cmp::min(maximum as usize, step as usize * n);
-
-                match doublesided
-                {
-                    true =>
-                        {
-                            buffer[s1-n].re = match imaginary { true => { buffer[s1-n].re * mother[tmp as usize] } false => { buffer[s1-n].re * mother[tmp as usize] * - 1.0 } };
-                            buffer[s1-n].im = buffer[s1-n].im * mother[tmp as usize];
-                        }
-                    false => { buffer[n].re = buffer[n].re * mother[tmp as usize]; buffer[n].im = buffer[n].im * mother[tmp as usize]; }
-                }
-            }
+                buffer[s1 - n].re = if imaginary { buffer[s1 - n].re * mother[tmp as usize] } else { buffer[s1 - n].re * mother[tmp as usize] * -1.0 };
+                buffer[s1 - n].im = buffer[s1 - n].im * mother[tmp as usize];
+            } else { buffer[n].re = buffer[n].re * mother[tmp as usize]; buffer[n].im = buffer[n].im * mother[tmp as usize]; }
         }
     }
-}
-
-fn find2power(n : usize) -> usize
-{
-    let mut m = 0;
-    let mut m2 = 1 << m; /* 2 to the power of m */
-    while (m2 as isize - n as isize) < 0
-    {
-        m = m + 1;
-        m2 <<= 1; /* m2 = m2*2 */
-    }
-    return m;
 }
