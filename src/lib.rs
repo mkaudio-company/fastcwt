@@ -26,6 +26,8 @@
 //!
 //! Changelog
 //!
+//! 0.1.6 - Transfered owndership to company account.
+//! 
 //! 0.1.5 - Parallelized FFT using rayon crate.
 //!
 //! 0.1.4 - Added error messages in assert!() and #![forbid(unsafe_code)] macro.
@@ -103,7 +105,7 @@ impl Wavelet
 /// Scale factor for the wavelet transform.
 pub struct Scales
 {
-    scales : Vec<f64>,
+    scales : Box<[f64]>,
     fs : usize,
     num_scales : usize
 }
@@ -124,7 +126,7 @@ impl Scales
     {
         let mut scales = Scales
         {
-            scales: vec![0.0; af_num],
+            scales: vec![0.0;af_num].into_boxed_slice(),
             fs : afs,
             num_scales: af_num,
         };
@@ -136,7 +138,7 @@ impl Scales
         }
         return scales;
     }
-    pub fn get_scales(& self) -> Vec<f64> { return self.scales.clone(); }
+    pub fn get_scales(& self) -> Box<[f64]> { return self.scales.clone(); }
     pub fn get_frequencies(& self, p_freqs : & mut Vec<f64>) -> Vec<f64>
     {
         let mut frequencies = vec![];
@@ -224,7 +226,7 @@ impl FastCWT
 
         let buffer = std::sync::Arc::new(std::sync::Mutex::new(Some(buffer)));
         let buffer_clone = buffer.clone();
-
+        
         (0 .. scales.num_scales).into_par_iter().for_each(|i|
         {
             if let Ok(mut guard) = buffer_clone.try_lock()

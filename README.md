@@ -31,6 +31,8 @@ let result = transform.cwt(1000, input.as_slice(), scale); //Store the result.
 ```
 
 # Changelog
+0.1.6 - Transfered owndership to company account.
+
 0.1.5 - Parallelized FFT using rayon crate.
 
 0.1.4 - Added error messages in assert!() and #![forbid(unsafe_code)] macro.

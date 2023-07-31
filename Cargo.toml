@@ -17,6 +17,7 @@ edition = "2021"
 [dependencies]
 rustfft = "6.1.0"
 rayon = "1.7.0"
+mkaudiolibrary = "0.1.12"
 
 [dev-dependencies]
 rand = "0.8.5"
