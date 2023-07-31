@@ -1,6 +1,6 @@
 [package]
 name = "fastcwt"
-version = "0.1.5"
+version = "0.1.7"
 authors = ["Minjae Kim <minjaekim@mkaudio.company>"]
 description = "Rust-lang Continuous Wavelet Transform(CWT) library inspired by fCWT."
 documentation = "https://docs.rs/fastcwt"
