@@ -26,6 +26,8 @@
 //!
 //! Changelog
 //!
+//! 0.1.8 - Droped mkaudiolibrary which is not used.
+//! 
 //! 0.1.7 - Used boxed slice instead of vec in Scales struct.
 //! 
 //! 0.1.6 - Transfered owndership to company account.
@@ -203,7 +205,7 @@ impl FastCWT
     /// wavelet             - Wavelet object.
     ///
     /// optplan             - Use FFT optimization plans if true.
-    pub fn create(wavelet : Wavelet, optplan : bool) -> FastCWT { return FastCWT { wavelet, use_normalization : optplan, } }
+    pub fn create(wavelet : Wavelet, optplan : bool) -> Self { Self { wavelet, use_normalization : optplan, } }
     /// # Arguments
     /// input     - Input data in vector format
     ///
