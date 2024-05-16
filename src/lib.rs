@@ -89,7 +89,7 @@ impl Wavelet
             fb : bandwidth
         }
     }
-    fn generate(& mut self, size : usize)
+    fn generate(&mut self, size : usize)
     {
         //Frequency domain, because we only need size. Default scale is always 2;
         self.width = size;
@@ -150,7 +150,7 @@ impl Scales
         for i in 0..p_freqs.len() { frequencies.push(self.fs as f64 / self.scales[i]); }
         return frequencies;
     }
-    fn calculate_logscale_array(& mut self, base : f64, fs : usize, f0 : f64, f1 : f64, f_num : usize)
+    fn calculate_logscale_array(&mut self, base : f64, fs : usize, f0 : f64, f1 : f64, f_num : usize)
     {
         let nf0 = f0;
         let nf1 = f1;
@@ -170,7 +170,7 @@ impl Scales
             self.scales[i] = base.powf(power);
         }
     }
-    fn calculate_linscale_array(& mut self, fs : usize, f0 : f64, f1 : f64, f_num : usize)
+    fn calculate_linscale_array(&mut self, fs : usize, f0 : f64, f1 : f64, f_num : usize)
     {
         //If a signal has fs=100hz and you want to measure [0.1-50]Hz, you need scales 2 to 1000;
 
@@ -180,7 +180,7 @@ impl Scales
 
         for i in 0 .. f_num { self.scales[f_num - i - 1] = fs as f64 / f0 + (df / f_num as f64) * i as f64; }
     }
-    fn calculate_linfreq_array(& mut self, fs : usize, f0 : f64, f1 : f64, f_num : usize)
+    fn calculate_linfreq_array(&mut self, fs : usize, f0 : f64, f1 : f64, f_num : usize)
     {
         //If a signal has fs=100hz and you want to measure [0.1-50]Hz, you need scales 2 to 1000;
         let s0 = fs as f64 / f1;
@@ -211,7 +211,7 @@ impl FastCWT
     /// input     - Input data in vector format
     ///
     /// scales    - Scales object
-    pub fn cwt(& mut self, num : usize, input : & [f64], scales : Scales) -> Vec<rustfft::num_complex::Complex<f64>>
+    pub fn cwt(&mut self, num : usize, input : &[f64], scales : Scales) -> Vec<rustfft::num_complex::Complex<f64>>
     {
         //Find nearest power of 2
         let newsize = num.next_power_of_two();
@@ -252,7 +252,7 @@ impl FastCWT
             return buffer.lock().unwrap().take().unwrap();
         })
     }
-    fn daughter_wavelet_multiplication(& self, buffer : & mut [rustfft::num_complex::Complex<f64>], mother : &[f64], scale : f64, i_size : usize, imaginary : bool, doublesided : bool)
+    fn daughter_wavelet_multiplication(&self, buffer : &mut [rustfft::num_complex::Complex<f64>], mother : &[f64], scale : f64, i_size : usize, imaginary : bool, doublesided : bool)
     {
         let endpoint = std::cmp::min((i_size as f64 / 2.0) as usize, (i_size as f64 * 2.0 / scale) as usize);
         let step = scale / 2.0;
