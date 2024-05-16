@@ -45,8 +45,6 @@
 //! ### Citation
 //!
 //! Arts, L.P.A., van den Broek, E.L. The fast continuous wavelet transformation (fCWT) for real-time, high-quality, noise-resistant time–frequency analysis. Nat Comput Sci 2, 47–58 (2022). <https://doi.org/10.1038/s43588-021-00183-z>
-
-#![feature(core_intrinsics)]
 #![forbid(unsafe_code)]
 
 use rustfft;
