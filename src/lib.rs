@@ -147,7 +147,7 @@ impl Scales
     pub fn get_frequencies(& self, p_freqs : & mut Vec<f64>) -> Vec<f64>
     {
         let mut frequencies = vec![];
-        for i in 0..p_freqs.len() { frequencies.push(self.fs as f64 / self.scales[i]); }
+        no_denormals(|| { for i in 0..p_freqs.len() { frequencies.push(self.fs as f64 / self.scales[i]); } });
         return frequencies;
     }
     fn calculate_logscale_array(&mut self, base : f64, fs : usize, f0 : f64, f1 : f64, f_num : usize)
@@ -164,11 +164,14 @@ impl Scales
         let power1 = s1.log(std::f64::consts::E) / base.log(std::f64::consts::E);
         let dpower = power1 - power0;
 
-        for i in 0 .. f_num
+        no_denormals(||
         {
-            let power = power0 + dpower / ((f_num - 1) * i) as f64;
-            self.scales[i] = base.powf(power);
-        }
+            for i in 0 .. f_num
+            {
+                let power = power0 + dpower / ((f_num - 1) * i) as f64;
+                self.scales[i] = base.powf(power);
+            }
+        });
     }
     fn calculate_linscale_array(&mut self, fs : usize, f0 : f64, f1 : f64, f_num : usize)
     {
@@ -178,7 +181,7 @@ impl Scales
         assert!(f1 <= (fs / 2) as f64, "Max frequency cannot be higher than the Nyquist frequency.");
         let df = f1 - f0;
 
-        for i in 0 .. f_num { self.scales[f_num - i - 1] = fs as f64 / f0 + (df / f_num as f64) * i as f64; }
+        no_denormals(|| { for i in 0 .. f_num { self.scales[f_num - i - 1] = fs as f64 / f0 + (df / f_num as f64) * i as f64; } });
     }
     fn calculate_linfreq_array(&mut self, fs : usize, f0 : f64, f1 : f64, f_num : usize)
     {
@@ -190,7 +193,7 @@ impl Scales
         assert!(f1 <= fs as f64 / 2.0, "Max frequency cannot be higher than the Nyquist frequency.");
         let ds = s1 - s0;
 
-        for i in 0 .. f_num { self.scales[i] = s0 + (ds / f_num as f64) * i as f64; }
+        no_denormals(|| { for i in 0 .. f_num { self.scales[i] = s0 + (ds / f_num as f64) * i as f64; } });
     }
 }
 
@@ -213,17 +216,16 @@ impl FastCWT
     /// scales    - Scales object
     pub fn cwt(&mut self, num : usize, input : &[f64], scales : Scales) -> Vec<rustfft::num_complex::Complex<f64>>
     {
-        //Find nearest power of 2
-        let newsize = num.next_power_of_two();
-        let mut buffer = vec![];
-
-        //Copy input to new input buffer
-        for data in input { buffer.push(rustfft::num_complex::Complex::new(* data, 0.0)); }
-
-        let mut planner = rustfft::FftPlanner::new();
-
         no_denormals(||
         {
+            //Find nearest power of 2
+            let newsize = num.next_power_of_two();
+            let mut buffer = vec![];
+    
+            //Copy input to new input buffer
+            for data in input { buffer.push(rustfft::num_complex::Complex::new(* data, 0.0)); }
+            let mut planner = rustfft::FftPlanner::new();
+
             // //Perform forward FFT on input signal
             planner.plan_fft_forward(buffer.len()).process(& mut buffer);
 
@@ -260,16 +262,18 @@ impl FastCWT
         let maximum = i_size as f64 - 1.0;
         let s1 = i_size - 1;
 
-        
-        for n in 0 .. endpoint
+        no_denormals(||
         {
-            let tmp = std::cmp::min(maximum as usize, step as usize * n);
-
-            if doublesided
+            for n in 0 .. endpoint
             {
-                buffer[s1 - n].re = if imaginary { buffer[s1 - n].re * mother[tmp as usize] } else { buffer[s1 - n].re * mother[tmp as usize] * -1.0 };
-                buffer[s1 - n].im = buffer[s1 - n].im * mother[tmp as usize];
-            } else { buffer[n].re = buffer[n].re * mother[tmp as usize]; buffer[n].im = buffer[n].im * mother[tmp as usize]; }
-        }
+                let tmp = std::cmp::min(maximum as usize, step as usize * n);
+    
+                if doublesided
+                {
+                    buffer[s1 - n].re = if imaginary { buffer[s1 - n].re * mother[tmp as usize] } else { buffer[s1 - n].re * mother[tmp as usize] * -1.0 };
+                    buffer[s1 - n].im = buffer[s1 - n].im * mother[tmp as usize];
+                } else { buffer[n].re = buffer[n].re * mother[tmp as usize]; buffer[n].im = buffer[n].im * mother[tmp as usize]; }
+            }
+        });
     }
 }
