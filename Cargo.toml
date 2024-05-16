@@ -15,6 +15,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+no_denormals = "0.1.2"
 rustfft = "6.2.0"
 rayon = "1.10.0"
 

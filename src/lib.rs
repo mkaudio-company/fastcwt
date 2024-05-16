@@ -26,6 +26,8 @@
 //!
 //! Changelog
 //!
+//! 0.1.9 - Used no_denormals to avoid extra latency. Cleaned up the repository.
+//! 
 //! 0.1.8 - Droped mkaudiolibrary which is not used.
 //! 
 //! 0.1.7 - Used boxed slice instead of vec in Scales struct.
@@ -47,6 +49,7 @@
 //! Arts, L.P.A., van den Broek, E.L. The fast continuous wavelet transformation (fCWT) for real-time, high-quality, noise-resistant time–frequency analysis. Nat Comput Sci 2, 47–58 (2022). <https://doi.org/10.1038/s43588-021-00183-z>
 #![forbid(unsafe_code)]
 
+use no_denormals::*;
 use rustfft;
 use rayon::prelude::*;
 
@@ -219,32 +222,35 @@ impl FastCWT
 
         let mut planner = rustfft::FftPlanner::new();
 
-        // //Perform forward FFT on input signal
-        planner.plan_fft_forward(buffer.len()).process(& mut buffer);
-
-        //Generate mother wavelet function
-        self.wavelet.generate(newsize);
-        for i in 1 .. newsize >> 1 { buffer[newsize - i] = buffer[i]; }
-
-        let buffer = std::sync::Arc::new(std::sync::Mutex::new(Some(buffer)));
-        let buffer_clone = buffer.clone();
-        
-        (0 .. scales.num_scales).into_par_iter().for_each(|i|
+        no_denormals(||
         {
-            if let Ok(mut guard) = buffer_clone.try_lock()
-            {
-                if let Some(buffer_clone) = guard.as_mut()
-                {
-                    let mut planner = rustfft::FftPlanner::new();
-                    //FFT-base convolution in the frequency domain
-                    self.daughter_wavelet_multiplication(buffer_clone, self.wavelet.mother.as_slice(), scales.scales[i],num, self.wavelet.imag_freq, self.wavelet.double_sided);
+            // //Perform forward FFT on input signal
+            planner.plan_fft_forward(buffer.len()).process(& mut buffer);
 
-                    planner.plan_fft_forward(buffer_clone.len()).process(buffer_clone);
-                    if self.use_normalization { for n in 0 .. newsize { buffer_clone[n] = buffer_clone[n] / newsize as f64; } }
+            //Generate mother wavelet function
+            self.wavelet.generate(newsize);
+            for i in 1 .. newsize >> 1 { buffer[newsize - i] = buffer[i]; }
+
+            let buffer = std::sync::Arc::new(std::sync::Mutex::new(Some(buffer)));
+            let buffer_clone = buffer.clone();
+        
+            (0 .. scales.num_scales).into_par_iter().for_each(|i|
+            {
+                if let Ok(mut guard) = buffer_clone.try_lock()
+                {
+                    if let Some(buffer_clone) = guard.as_mut()
+                    {
+                        let mut planner = rustfft::FftPlanner::new();
+                        //FFT-base convolution in the frequency domain
+                        self.daughter_wavelet_multiplication(buffer_clone, self.wavelet.mother.as_slice(), scales.scales[i],num, self.wavelet.imag_freq, self.wavelet.double_sided);
+    
+                        planner.plan_fft_forward(buffer_clone.len()).process(buffer_clone);
+                        if self.use_normalization { for n in 0 .. newsize { buffer_clone[n] = buffer_clone[n] / newsize as f64; } }
+                    }
                 }
-            }
-        });
-        return buffer.lock().unwrap().take().unwrap();
+            });
+            return buffer.lock().unwrap().take().unwrap();
+        })
     }
     fn daughter_wavelet_multiplication(& self, buffer : & mut [rustfft::num_complex::Complex<f64>], mother : &[f64], scale : f64, i_size : usize, imaginary : bool, doublesided : bool)
     {
@@ -254,6 +260,7 @@ impl FastCWT
         let maximum = i_size as f64 - 1.0;
         let s1 = i_size - 1;
 
+        
         for n in 0 .. endpoint
         {
             let tmp = std::cmp::min(maximum as usize, step as usize * n);
